@@ -19,7 +19,7 @@
 
 int main(int argc, char **argv)
 {
-    BEGIN_TEST_NO_INIT();
+    BEGIN_TEST();
 
     /* One of the primary purposes of seccomp is to block opening new files.
      * So before we enable seccomp, we need to open any files that the test would
@@ -41,7 +41,7 @@ int main(int argc, char **argv)
      *
      * An application using s2n-tls with seccomp would need to do the same.
      */
-    EXPECT_SUCCESS(s2n_init());
+    //EXPECT_SUCCESS(s2n_init());
 
     /* No unexpected syscalls allowed beyond this point */
     EXPECT_OK(s2n_seccomp_init());

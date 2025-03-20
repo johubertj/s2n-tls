@@ -42,46 +42,46 @@ int main(int argc, char **argv)
      * An application using s2n-tls with seccomp would need to do the same.
      */
     EXPECT_SUCCESS(s2n_init());
+
+    /* No unexpected syscalls allowed beyond this point */
+    EXPECT_OK(s2n_seccomp_init());
+
+    DEFER_CLEANUP(struct s2n_cert_chain_and_key *chain_and_key = s2n_cert_chain_and_key_new(),
+            s2n_cert_chain_and_key_ptr_free);
+    EXPECT_SUCCESS(s2n_cert_chain_and_key_load_pem(chain_and_key, cert_chain_pem, private_key_pem));
+
+    DEFER_CLEANUP(struct s2n_config *config = s2n_config_new_minimal(), s2n_config_ptr_free);
+    EXPECT_SUCCESS(s2n_config_add_cert_chain_and_key_to_store(config, chain_and_key));
+    EXPECT_SUCCESS(s2n_config_add_pem_to_trust_store(config, cert_chain_pem));
+
+    const char *security_policies[] = { "test_all_tls12", "default_tls13" };
+
+    for (size_t i = 0; i < s2n_array_len(security_policies); i++) {
+        DEFER_CLEANUP(struct s2n_connection *client = s2n_connection_new(S2N_CLIENT),
+                s2n_connection_ptr_free);
+        EXPECT_NOT_NULL(client);
+        EXPECT_SUCCESS(s2n_connection_set_config(client, config));
+        EXPECT_SUCCESS(s2n_connection_set_cipher_preferences(client, security_policies[i]));
+        EXPECT_SUCCESS(s2n_set_server_name(client, "127.0.0.1"));
+
+        DEFER_CLEANUP(struct s2n_connection *server = s2n_connection_new(S2N_SERVER),
+                s2n_connection_ptr_free);
+        EXPECT_NOT_NULL(server);
+        EXPECT_SUCCESS(s2n_connection_set_config(server, config));
+        EXPECT_SUCCESS(s2n_connection_set_cipher_preferences(server, security_policies[i]));
+
+        DEFER_CLEANUP(struct s2n_test_io_stuffer_pair io_pair = { 0 }, s2n_io_stuffer_pair_free);
+        EXPECT_OK(s2n_io_stuffer_pair_init(&io_pair));
+        EXPECT_OK(s2n_connections_set_io_stuffer_pair(client, server, &io_pair));
+        EXPECT_SUCCESS(s2n_negotiate_test_server_and_client(server, client));
+
+        const uint8_t data[] = "hello world";
+        uint8_t buffer[100] = { 0 };
+        s2n_blocked_status blocked = S2N_NOT_BLOCKED;
+        EXPECT_EQUAL(s2n_send(client, data, sizeof(data), &blocked), sizeof(data));
+        EXPECT_EQUAL(s2n_recv(server, buffer, sizeof(buffer), &blocked), sizeof(data));
+        EXPECT_BYTEARRAY_EQUAL(buffer, data, sizeof(data));
+    }
+
     END_TEST();
-//     /* No unexpected syscalls allowed beyond this point */
-//     EXPECT_OK(s2n_seccomp_init());
-
-//     DEFER_CLEANUP(struct s2n_cert_chain_and_key *chain_and_key = s2n_cert_chain_and_key_new(),
-//             s2n_cert_chain_and_key_ptr_free);
-//     EXPECT_SUCCESS(s2n_cert_chain_and_key_load_pem(chain_and_key, cert_chain_pem, private_key_pem));
-
-//     DEFER_CLEANUP(struct s2n_config *config = s2n_config_new_minimal(), s2n_config_ptr_free);
-//     EXPECT_SUCCESS(s2n_config_add_cert_chain_and_key_to_store(config, chain_and_key));
-//     EXPECT_SUCCESS(s2n_config_add_pem_to_trust_store(config, cert_chain_pem));
-
-//     const char *security_policies[] = { "test_all_tls12", "default_tls13" };
-
-//     for (size_t i = 0; i < s2n_array_len(security_policies); i++) {
-//         DEFER_CLEANUP(struct s2n_connection *client = s2n_connection_new(S2N_CLIENT),
-//                 s2n_connection_ptr_free);
-//         EXPECT_NOT_NULL(client);
-//         EXPECT_SUCCESS(s2n_connection_set_config(client, config));
-//         EXPECT_SUCCESS(s2n_connection_set_cipher_preferences(client, security_policies[i]));
-//         EXPECT_SUCCESS(s2n_set_server_name(client, "127.0.0.1"));
-
-//         DEFER_CLEANUP(struct s2n_connection *server = s2n_connection_new(S2N_SERVER),
-//                 s2n_connection_ptr_free);
-//         EXPECT_NOT_NULL(server);
-//         EXPECT_SUCCESS(s2n_connection_set_config(server, config));
-//         EXPECT_SUCCESS(s2n_connection_set_cipher_preferences(server, security_policies[i]));
-
-//         DEFER_CLEANUP(struct s2n_test_io_stuffer_pair io_pair = { 0 }, s2n_io_stuffer_pair_free);
-//         EXPECT_OK(s2n_io_stuffer_pair_init(&io_pair));
-//         EXPECT_OK(s2n_connections_set_io_stuffer_pair(client, server, &io_pair));
-//         EXPECT_SUCCESS(s2n_negotiate_test_server_and_client(server, client));
-
-//         const uint8_t data[] = "hello world";
-//         uint8_t buffer[100] = { 0 };
-//         s2n_blocked_status blocked = S2N_NOT_BLOCKED;
-//         EXPECT_EQUAL(s2n_send(client, data, sizeof(data), &blocked), sizeof(data));
-//         EXPECT_EQUAL(s2n_recv(server, buffer, sizeof(buffer), &blocked), sizeof(data));
-//         EXPECT_BYTEARRAY_EQUAL(buffer, data, sizeof(data));
-//     }
-
-//     END_TEST();
 }

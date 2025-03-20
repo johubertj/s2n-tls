@@ -46,6 +46,51 @@
    fun:main
 }
 
+{
+   s2n_tls_dlopen_leak
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   fun:_dlfo_mappings_segment_allocate
+   fun:_dl_find_object_update_1
+   fun:_dl_find_object_update
+   fun:dl_open_worker_begin
+   fun:_dl_catch_exception
+   fun:dl_open_worker
+   fun:_dl_catch_exception
+   fun:_dl_open
+   fun:dlopen_doit
+   fun:_dl_catch_exception
+   fun:_dl_catch_error
+   fun:_dlerror_run
+   fun:dlopen_implementation
+   fun:dlopen@@GLIBC_2.34
+   fun:dlfcn_load
+   fun:DSO_load
+   fun:provider_init
+   fun:provider_activate
+   fun:ossl_provider_activate
+   fun:provider_conf_load
+   fun:provider_conf_init
+   fun:module_init
+   fun:module_run
+   fun:CONF_modules_load
+   fun:CONF_modules_load_file_ex
+   fun:ossl_config_int
+   fun:ossl_init_config
+   fun:ossl_init_config_ossl_
+   fun:__pthread_once_slow
+   fun:CRYPTO_THREAD_run_once
+   fun:OPENSSL_init_crypto
+   fun:ossl_ctx_global_properties
+   fun:evp_default_property_is_enabled
+   fun:EVP_default_properties_is_fips_enabled
+   fun:s2n_libcrypto_is_fips
+   fun:s2n_fips_init
+   fun:s2n_init
+   fun:main
+}
+
 # TODO: fix the pedantic leak errors from s2n_fork_generation_number_test
 {
    ignore_s2n_fork_generation_number_test

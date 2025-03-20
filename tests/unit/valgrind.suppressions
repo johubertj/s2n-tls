@@ -51,6 +51,7 @@
    Memcheck:Leak
    match-leak-kinds: possible
    fun:malloc
+   fun:malloc
    fun:_dlfo_mappings_segment_allocate
    fun:_dl_find_object_update_1
    fun:_dl_find_object_update

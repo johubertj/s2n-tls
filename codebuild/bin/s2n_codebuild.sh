@@ -69,6 +69,7 @@ run_integration_v2_tests() {
     setup_apache_server
     "$CB_BIN_DIR/install_s2n_head.sh" "$(mktemp -d)"
     cmake . -Bbuild \
+            -DCMAKE_C_FLAGS="-Wa,-mbranches-within-32B-boundaries" \
             -DCMAKE_PREFIX_PATH=$LIBCRYPTO_ROOT \
             -DBUILD_SHARED_LIBS=on \
             -DS2N_INTEG_TESTS=on \

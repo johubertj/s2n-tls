@@ -687,7 +687,7 @@ if (BUILD_TESTING)
             set(FUZZ_TIMEOUT_SEC 60)
         endif()
 
-        # Build LD_PRELOAD shared libraries
+        # Build LD_PRELOAD shared fasdflibraries
         file(GLOB LIBRARY_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/tests/fuzz/LD_PRELOAD/*.c")
         foreach(SRC ${LIBRARY_SRCS})
             get_filename_component(LIB_NAME ${SRC} NAME_WE)

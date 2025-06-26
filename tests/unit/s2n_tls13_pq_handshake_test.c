@@ -757,6 +757,16 @@ int main()
                 .expected_curve = ec_if_no_mlkem,
                 .hrr_expected = false,
                 .len_prefix_expected = false,
+        },
+
+        /* Confirm that MLKEM1024 is negotiable */
+        {
+                .client_policy = &mlkem1024_test_policy,
+                .server_policy = &mlkem1024_test_policy,
+                .expected_kem_group = null_if_no_mlkem,
+                .expected_curve = ec_if_no_mlkem,
+                .hrr_expected = false,
+                .len_prefix_expected = false,
         }
     };
 

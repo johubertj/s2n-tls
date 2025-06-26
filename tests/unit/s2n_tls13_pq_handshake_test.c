@@ -756,22 +756,22 @@ int main()
 
         /* Confirm that MLKEM768 is negotiable */
         {
-            .client_policy = &mlkem768_test_policy,
-            .server_policy = &mlkem768_test_policy,
-            .expected_kem_group = mlkem768_if_supported,
-            .expected_curve = ec_if_no_mlkem_768,
-            .hrr_expected = false,
-            .len_prefix_expected = false,
+                .client_policy = &mlkem768_test_policy,
+                .server_policy = &mlkem768_test_policy,
+                .expected_kem_group = mlkem768_if_supported,
+                .expected_curve = ec_if_no_mlkem_768,
+                .hrr_expected = false,
+                .len_prefix_expected = false,
         },
 
         /* Confirm that MLKEM1024 is negotiable */
         {
-            .client_policy = &mlkem1024_test_policy,
-            .server_policy = &mlkem1024_test_policy,
-            .expected_kem_group = mlkem1024_if_supported,
-            .expected_curve = ec_if_no_mlkem_1024,
-            .hrr_expected = false,
-            .len_prefix_expected = false,
+                .client_policy = &mlkem1024_test_policy,
+                .server_policy = &mlkem1024_test_policy,
+                .expected_kem_group = mlkem1024_if_supported,
+                .expected_curve = ec_if_no_mlkem_1024,
+                .hrr_expected = false,
+                .len_prefix_expected = false,
         }
     };
 

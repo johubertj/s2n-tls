@@ -516,6 +516,7 @@ int main(int argc, char **argv)
         &aes_256_sha_384_x25519_kyber768r3_vector,
         &aes_128_sha_256_secp256r1_mlkem768_vector,
         &aes_256_sha_384_secp256r1_mlkem768_vector,
+        &aes_128_sha_256_secp384r1_mlkem1024_vector,
         &aes_256_sha_384_secp384r1_mlkem1024_vector,
         &aes_128_sha_256_x25519_mlkem768_vector,
         &aes_256_sha_384_x25519_mlkem768_vector,

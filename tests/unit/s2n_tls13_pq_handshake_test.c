@@ -335,6 +335,21 @@ int main()
         END_TEST();
     }
 
+    printf("In FIPS mode: %s\n", s2n_is_in_fips_mode() ? "YES" : "NO");
+    printf("Supports MLKEM: %s\n", s2n_libcrypto_supports_mlkem() ? "YES" : "NO");
+
+    printf("Available KEM groups:\n");
+
+    if (s2n_kem_group_is_available(&s2n_x25519_mlkem_768)) {
+        printf(" - x25519_mlkem_768\n");
+    }
+    if (s2n_kem_group_is_available(&s2n_secp256r1_mlkem_768)) {
+        printf(" - secp256r1_mlkem_768\n");
+    }
+    if (s2n_kem_group_is_available(&s2n_secp384r1_mlkem_1024)) {
+        printf(" - secp384r1_mlkem_1024\n");
+}
+
     /* Additional KEM preferences/security policies to test against. These policies can only be used
      * as the server's policy in this test: when generating the ClientHello, the client relies on
      * the security_policy_selection[] array (in s2n_security_policies.c) to determine if it should

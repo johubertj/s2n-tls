@@ -348,7 +348,7 @@ int main()
     }
     if (s2n_kem_group_is_available(&s2n_secp384r1_mlkem_1024)) {
         printf(" - secp384r1_mlkem_1024\n");
-}
+    }
 
     /* Additional KEM preferences/security policies to test against. These policies can only be used
      * as the server's policy in this test: when generating the ClientHello, the client relies on
@@ -777,18 +777,27 @@ int main()
                 .expected_curve = ec_if_no_mlkem_768,
                 .hrr_expected = false,
                 .len_prefix_expected = false,
-        },
-
-        /* Confirm that MLKEM1024 is negotiable */
-        {
-                .client_policy = &mlkem1024_test_policy,
-                .server_policy = &mlkem1024_test_policy,
-                .expected_kem_group = mlkem1024_if_supported,
-                .expected_curve = ec_if_no_mlkem_1024,
-                .hrr_expected = false,
-                .len_prefix_expected = false,
         }
     };
+
+    /* Conditionally test MLKEM1024 only if supported */
+    if (s2n_libcrypto_supports_mlkem() && !s2n_is_in_fips_mode()) {
+        const struct pq_handshake_test_vector mlkem1024_vector = {
+            .client_policy = &mlkem1024_test_policy,
+            .server_policy = &mlkem1024_test_policy,
+            .expected_kem_group = mlkem1024_if_supported,
+            .expected_curve = ec_if_no_mlkem_1024,
+            .hrr_expected = false,
+            .len_prefix_expected = false,
+        };
+        EXPECT_SUCCESS(s2n_test_tls13_pq_handshake(
+            mlkem1024_vector.client_policy,
+            mlkem1024_vector.server_policy,
+            mlkem1024_vector.expected_kem_group,
+            mlkem1024_vector.expected_curve,
+            mlkem1024_vector.hrr_expected,
+            mlkem1024_vector.len_prefix_expected));
+    }
 
     for (size_t i = 0; i < s2n_array_len(test_vectors); i++) {
         const struct pq_handshake_test_vector *vector = &test_vectors[i];

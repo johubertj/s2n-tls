@@ -463,7 +463,7 @@ int main()
         .cipher_preferences = &cipher_preferences_20190801,
         .kem_preferences = &mlkem1024_test_prefs,
         .signature_preferences = &s2n_signature_preferences_20200207,
-        .ecc_preferences = &s2n_ecc_preferences_20240603,
+        .ecc_preferences = &s2n_ecc_preferences_20210816,
     };
 
     const struct s2n_security_policy ecc_retry_policy = {

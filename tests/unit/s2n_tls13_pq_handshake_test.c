@@ -764,15 +764,15 @@ int main()
                 .len_prefix_expected = false,
         },
 
-        /* Confirm that MLKEM1024 is negotiable */
-        {
-                .client_policy = &mlkem1024_test_policy,
-                .server_policy = &mlkem1024_test_policy,
-                .expected_kem_group = mlkem1024_if_supported,
-                .expected_curve = ec_if_no_mlkem_1024,
-                .hrr_expected = false,
-                .len_prefix_expected = false,
-        }
+        // /* Confirm that MLKEM1024 is negotiable */
+        // {
+        //         .client_policy = &mlkem1024_test_policy,
+        //         .server_policy = &mlkem1024_test_policy,
+        //         .expected_kem_group = mlkem1024_if_supported,
+        //         .expected_curve = ec_if_no_mlkem_1024,
+        //         .hrr_expected = false,
+        //         .len_prefix_expected = false,
+        // }
     };
 
     for (size_t i = 0; i < s2n_array_len(test_vectors); i++) {

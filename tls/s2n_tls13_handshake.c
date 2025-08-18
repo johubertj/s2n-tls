@@ -73,8 +73,10 @@ int s2n_tls13_compute_ecc_shared_secret(struct s2n_connection *conn, struct s2n_
 }
 
 /* Computes the ECDHE+PQKEM hybrid shared secret as defined in
- * https://tools.ietf.org/html/draft-stebila-tls-hybrid-design */
-int s2n_tls13_compute_pq_hybrid_shared_secret(struct s2n_connection *conn, struct s2n_blob *shared_secret)
+ * https://tools.ietf.org/html/draft-stebila-tls-hybrid-design
+ *
+ * If the negotiated KEM group is pure PQ (no ECDHE), then only the PQ shared secret is used. */
+int s2n_tls13_compute_pq_shared_secret(struct s2n_connection *conn, struct s2n_blob *shared_secret)
 {
     POSIX_ENSURE_REF(conn);
     POSIX_ENSURE_REF(shared_secret);
@@ -82,57 +84,6 @@ int s2n_tls13_compute_pq_hybrid_shared_secret(struct s2n_connection *conn, struc
     /* conn->kex_params.server_ecc_evp_params should be set only during a classic/non-hybrid handshake */
     POSIX_ENSURE_EQ(NULL, conn->kex_params.server_ecc_evp_params.negotiated_curve);
     POSIX_ENSURE_EQ(NULL, conn->kex_params.server_ecc_evp_params.evp_pkey);
-
-    struct s2n_kem_group_params *server_kem_group_params = &conn->kex_params.server_kem_group_params;
-    POSIX_ENSURE_REF(server_kem_group_params);
-    struct s2n_ecc_evp_params *server_ecc_params = &server_kem_group_params->ecc_params;
-    POSIX_ENSURE_REF(server_ecc_params);
-
-    struct s2n_kem_group_params *client_kem_group_params = &conn->kex_params.client_kem_group_params;
-    POSIX_ENSURE_REF(client_kem_group_params);
-    struct s2n_ecc_evp_params *client_ecc_params = &client_kem_group_params->ecc_params;
-    POSIX_ENSURE_REF(client_ecc_params);
-
-    DEFER_CLEANUP(struct s2n_blob ecdhe_shared_secret = { 0 }, s2n_free_or_wipe);
-
-    /* Compute the ECDHE shared secret, and retrieve the PQ shared secret. */
-    if (conn->mode == S2N_CLIENT) {
-        POSIX_GUARD(s2n_ecc_evp_compute_shared_secret_from_params(client_ecc_params, server_ecc_params, &ecdhe_shared_secret));
-    } else {
-        POSIX_GUARD(s2n_ecc_evp_compute_shared_secret_from_params(server_ecc_params, client_ecc_params, &ecdhe_shared_secret));
-    }
-
-    struct s2n_blob *pq_shared_secret = &client_kem_group_params->kem_params.shared_secret;
-    POSIX_ENSURE_REF(pq_shared_secret);
-    POSIX_ENSURE_REF(pq_shared_secret->data);
-
-    const struct s2n_kem_group *negotiated_kem_group = conn->kex_params.server_kem_group_params.kem_group;
-    POSIX_ENSURE_REF(negotiated_kem_group);
-    POSIX_ENSURE_REF(negotiated_kem_group->kem);
-
-    POSIX_ENSURE_EQ(pq_shared_secret->size, negotiated_kem_group->kem->shared_secret_key_length);
-
-    /* Construct the concatenated/hybrid shared secret */
-    uint32_t hybrid_shared_secret_size = ecdhe_shared_secret.size + negotiated_kem_group->kem->shared_secret_key_length;
-    POSIX_GUARD(s2n_alloc(shared_secret, hybrid_shared_secret_size));
-    struct s2n_stuffer stuffer_combiner = { 0 };
-    POSIX_GUARD(s2n_stuffer_init(&stuffer_combiner, shared_secret));
-
-    if (negotiated_kem_group->send_kem_first) {
-        POSIX_GUARD(s2n_stuffer_write(&stuffer_combiner, pq_shared_secret));
-        POSIX_GUARD(s2n_stuffer_write(&stuffer_combiner, &ecdhe_shared_secret));
-    } else {
-        POSIX_GUARD(s2n_stuffer_write(&stuffer_combiner, &ecdhe_shared_secret));
-        POSIX_GUARD(s2n_stuffer_write(&stuffer_combiner, pq_shared_secret));
-    }
-
-    return S2N_SUCCESS;
-}
-
-int s2n_tls13_compute_pure_pq_shared_secret(struct s2n_connection *conn, struct s2n_blob *shared_secret)
-{
-    POSIX_ENSURE_REF(conn);
-    POSIX_ENSURE_REF(shared_secret);
 
     const struct s2n_kem_group *kem_group = conn->kex_params.server_kem_group_params.kem_group;
     POSIX_ENSURE_REF(kem_group);
@@ -144,9 +95,40 @@ int s2n_tls13_compute_pure_pq_shared_secret(struct s2n_connection *conn, struct 
 
     POSIX_ENSURE_EQ(pq_shared_secret->size, kem_group->kem->shared_secret_key_length);
 
-    /* Allocate and copy directly */
-    POSIX_GUARD(s2n_alloc(shared_secret, pq_shared_secret->size));
-    POSIX_CHECKED_MEMCPY(shared_secret->data, pq_shared_secret->data, pq_shared_secret->size);
+    if (kem_group->curve == &s2n_ecc_curve_placeholder_for_pure_pq) {
+        POSIX_GUARD(s2n_alloc(shared_secret, pq_shared_secret->size));
+        POSIX_CHECKED_MEMCPY(shared_secret->data, pq_shared_secret->data, pq_shared_secret->size);
+        return S2N_SUCCESS;
+    }
+
+    struct s2n_kem_group_params *server_kem_group_params = &conn->kex_params.server_kem_group_params;
+    POSIX_ENSURE_REF(server_kem_group_params);
+    struct s2n_ecc_evp_params *server_ecc_params = &server_kem_group_params->ecc_params;
+
+    struct s2n_kem_group_params *client_kem_group_params = &conn->kex_params.client_kem_group_params;
+    POSIX_ENSURE_REF(client_kem_group_params);
+    struct s2n_ecc_evp_params *client_ecc_params = &client_kem_group_params->ecc_params;
+
+    DEFER_CLEANUP(struct s2n_blob ecdhe_shared_secret = { 0 }, s2n_free_or_wipe);
+
+    if (conn->mode == S2N_CLIENT) {
+        POSIX_GUARD(s2n_ecc_evp_compute_shared_secret_from_params(client_ecc_params, server_ecc_params, &ecdhe_shared_secret));
+    } else {
+        POSIX_GUARD(s2n_ecc_evp_compute_shared_secret_from_params(server_ecc_params, client_ecc_params, &ecdhe_shared_secret));
+    }
+
+    uint32_t hybrid_shared_secret_size = ecdhe_shared_secret.size + kem_group->kem->shared_secret_key_length;
+    POSIX_GUARD(s2n_alloc(shared_secret, hybrid_shared_secret_size));
+    struct s2n_stuffer stuffer_combiner = { 0 };
+    POSIX_GUARD(s2n_stuffer_init(&stuffer_combiner, shared_secret));
+
+    if (kem_group->send_kem_first) {
+        POSIX_GUARD(s2n_stuffer_write(&stuffer_combiner, pq_shared_secret));
+        POSIX_GUARD(s2n_stuffer_write(&stuffer_combiner, &ecdhe_shared_secret));
+    } else {
+        POSIX_GUARD(s2n_stuffer_write(&stuffer_combiner, &ecdhe_shared_secret));
+        POSIX_GUARD(s2n_stuffer_write(&stuffer_combiner, pq_shared_secret));
+    }
 
     return S2N_SUCCESS;
 }
@@ -156,19 +138,25 @@ int s2n_tls13_pq_hybrid_supported(struct s2n_connection *conn)
     return conn->kex_params.server_kem_group_params.kem_group != NULL;
 }
 
-int s2n_tls13_pure_pq_supported(struct s2n_connection *conn)
+static bool s2n_tls13_pq_pure_supported(struct s2n_connection *conn)
 {
+    if (!conn) {
+        return false;
+    }
+
     const struct s2n_kem_group *kem_group = conn->kex_params.server_kem_group_params.kem_group;
-    return kem_group && kem_group->curve == &s2n_ecc_curve_mlkem_placeholder;
+    return s2n_tls13_pq_hybrid_supported(conn)
+        && kem_group
+        && kem_group->curve == &s2n_ecc_curve_placeholder_for_pure_pq;
 }
 
 int s2n_tls13_compute_shared_secret(struct s2n_connection *conn, struct s2n_blob *shared_secret)
 {
     POSIX_ENSURE_REF(conn);
 
-    if (s2n_tls13_pure_pq_supported(conn)) {
-        POSIX_GUARD(s2n_tls13_compute_pure_pq_shared_secret(conn, shared_secret));
-    } else if (s2n_tls13_pq_hybrid_supported(conn)) {
+    if (s2n_tls13_pq_hybrid_supported(conn) || s2n_tls13_pq_pure_supported(conn)) {
+        POSIX_GUARD(s2n_tls13_compute_pq_shared_secret(conn, shared_secret));
+    } else {
         POSIX_GUARD(s2n_tls13_compute_ecc_shared_secret(conn, shared_secret));
     }
 

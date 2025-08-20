@@ -146,8 +146,8 @@ static bool s2n_tls13_pq_pure_supported(struct s2n_connection *conn)
 
     const struct s2n_kem_group *kem_group = conn->kex_params.server_kem_group_params.kem_group;
     return s2n_tls13_pq_hybrid_supported(conn)
-        && kem_group
-        && kem_group->curve == &s2n_ecc_curve_placeholder_for_pure_pq;
+            && kem_group
+            && kem_group->curve == &s2n_ecc_curve_placeholder_for_pure_pq;
 }
 
 int s2n_tls13_compute_shared_secret(struct s2n_connection *conn, struct s2n_blob *shared_secret)

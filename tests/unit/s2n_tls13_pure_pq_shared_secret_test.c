@@ -47,8 +47,8 @@ struct pure_pq_test_vector {
     struct s2n_blob *expected_server_traffic_secret;
 };
 
-static int s2n_set_up_pure_pq_conns(struct s2n_connection *client_conn, struct s2n_connection *server_conn,
-        const struct s2n_kem_group *kem_group, struct s2n_blob *pq_shared_secret)
+static int s2n_configure_pure_pq_conns(struct s2n_connection *client_conn,
+        struct s2n_connection *server_conn, const struct s2n_kem_group *kem_group)
 {
     server_conn->kex_params.server_kem_group_params.kem_group = kem_group;
     server_conn->kex_params.client_kem_group_params.kem_group = kem_group;
@@ -60,9 +60,16 @@ static int s2n_set_up_pure_pq_conns(struct s2n_connection *client_conn, struct s
     client_conn->kex_params.server_kem_group_params.kem_params.kem = kem_group->kem;
     client_conn->kex_params.client_kem_group_params.kem_params.kem = kem_group->kem;
 
-    POSIX_GUARD(s2n_dup(pq_shared_secret, &server_conn->kex_params.client_kem_group_params.kem_params.shared_secret));
-    POSIX_GUARD(s2n_dup(pq_shared_secret, &client_conn->kex_params.client_kem_group_params.kem_params.shared_secret));
+    return S2N_SUCCESS;
+}
 
+static int s2n_inject_pq_secret(struct s2n_connection *client_conn,
+        struct s2n_connection *server_conn, struct s2n_blob *pq_shared_secret)
+{
+    POSIX_GUARD(s2n_dup(pq_shared_secret,
+            &server_conn->kex_params.client_kem_group_params.kem_params.shared_secret));
+    POSIX_GUARD(s2n_dup(pq_shared_secret,
+            &client_conn->kex_params.client_kem_group_params.kem_params.shared_secret));
     return S2N_SUCCESS;
 }
 
@@ -112,18 +119,18 @@ int main(int argc, char **argv)
         EXPECT_NOT_NULL(client_conn = s2n_connection_new(S2N_CLIENT));
         EXPECT_NOT_NULL(server_conn = s2n_connection_new(S2N_SERVER));
 
-        EXPECT_SUCCESS(s2n_set_up_pure_pq_conns(client_conn, server_conn,
-                test_vector->kem_group, test_vector->pq_secret));
+        EXPECT_SUCCESS(s2n_configure_pure_pq_conns(client_conn, server_conn, test_vector->kem_group));
+        EXPECT_SUCCESS(s2n_inject_pq_secret(client_conn, server_conn, test_vector->pq_secret));
 
         DEFER_CLEANUP(struct s2n_blob client_calculated_shared_secret = { 0 }, s2n_free);
         DEFER_CLEANUP(struct s2n_blob server_calculated_shared_secret = { 0 }, s2n_free);
         EXPECT_SUCCESS(s2n_tls13_compute_shared_secret(client_conn, &client_calculated_shared_secret));
         EXPECT_SUCCESS(s2n_tls13_compute_shared_secret(server_conn, &server_calculated_shared_secret));
-
         S2N_BLOB_EXPECT_EQUAL(client_calculated_shared_secret, server_calculated_shared_secret);
 
-        EXPECT_SUCCESS(s2n_set_up_pure_pq_conns(client_conn, server_conn,
-                test_vector->kem_group, test_vector->pq_secret));
+        /* Re-inject PQ secret for traffic secret derivation.
+         * The first compute_shared_secret wipes it, so we need to restore state for testing. */
+        EXPECT_SUCCESS(s2n_inject_pq_secret(client_conn, server_conn, test_vector->pq_secret));
 
         DEFER_CLEANUP(struct s2n_tls13_keys secrets = { 0 }, s2n_tls13_keys_free);
         EXPECT_SUCCESS(s2n_tls13_keys_init(&secrets, test_vector->cipher_suite->prf_alg));

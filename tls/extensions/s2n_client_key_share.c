@@ -66,6 +66,9 @@ static int s2n_generate_default_ecc_key_share(struct s2n_connection *conn, struc
     const struct s2n_ecc_preferences *ecc_pref = NULL;
     POSIX_GUARD(s2n_connection_get_ecc_preferences(conn, &ecc_pref));
     POSIX_ENSURE_REF(ecc_pref);
+    if (ecc_pref->count == 0) {
+        return S2N_SUCCESS;
+    }
 
     /* We only ever send a single EC key share: either the share requested by the server
      * during a retry, or the most preferred share according to local preferences.
@@ -100,7 +103,7 @@ static int s2n_generate_default_ecc_key_share(struct s2n_connection *conn, struc
     return S2N_SUCCESS;
 }
 
-static int s2n_generate_pq_hybrid_key_share(struct s2n_stuffer *out, struct s2n_kem_group_params *kem_group_params)
+static int s2n_generate_pq_key_share(struct s2n_stuffer *out, struct s2n_kem_group_params *kem_group_params)
 {
     POSIX_ENSURE_REF(out);
     POSIX_ENSURE_REF(kem_group_params);
@@ -116,17 +119,21 @@ static int s2n_generate_pq_hybrid_key_share(struct s2n_stuffer *out, struct s2n_
     struct s2n_stuffer_reservation total_share_size = { 0 };
     POSIX_GUARD(s2n_stuffer_reserve_uint16(out, &total_share_size));
 
-    struct s2n_ecc_evp_params *ecc_params = &kem_group_params->ecc_params;
-    ecc_params->negotiated_curve = kem_group->curve;
-
     struct s2n_kem_params *kem_params = &kem_group_params->kem_params;
     kem_params->kem = kem_group->kem;
 
-    if (kem_group->send_kem_first) {
-        POSIX_GUARD(s2n_kem_send_public_key(out, kem_params));
-        POSIX_GUARD_RESULT(s2n_ecdhe_send_public_key(ecc_params, out, kem_params->len_prefixed));
+    if (kem_group->curve != &s2n_ecc_curve_placeholder_for_pure_pq) {
+        struct s2n_ecc_evp_params *ecc_params = &kem_group_params->ecc_params;
+        ecc_params->negotiated_curve = kem_group->curve;
+
+        if (kem_group->send_kem_first) {
+            POSIX_GUARD(s2n_kem_send_public_key(out, kem_params));
+            POSIX_GUARD_RESULT(s2n_ecdhe_send_public_key(ecc_params, out, kem_params->len_prefixed));
+        } else {
+            POSIX_GUARD_RESULT(s2n_ecdhe_send_public_key(ecc_params, out, kem_params->len_prefixed));
+            POSIX_GUARD(s2n_kem_send_public_key(out, kem_params));
+        }
     } else {
-        POSIX_GUARD_RESULT(s2n_ecdhe_send_public_key(ecc_params, out, kem_params->len_prefixed));
         POSIX_GUARD(s2n_kem_send_public_key(out, kem_params));
     }
 
@@ -187,7 +194,7 @@ static int s2n_generate_default_pq_hybrid_key_share(struct s2n_connection *conn,
         client_params->kem_params.len_prefixed = s2n_tls13_client_must_use_hybrid_kem_length_prefix(kem_pref);
     }
 
-    POSIX_GUARD(s2n_generate_pq_hybrid_key_share(out, client_params));
+    POSIX_GUARD(s2n_generate_pq_key_share(out, client_params));
 
     return S2N_SUCCESS;
 }

@@ -53,51 +53,50 @@ static int s2n_server_key_share_send_hybrid_partial_ecc(struct s2n_connection *c
     return S2N_SUCCESS;
 }
 
-static int s2n_server_key_share_generate_pq_hybrid(struct s2n_connection *conn, struct s2n_stuffer *out)
+static int s2n_server_key_share_generate_pq(struct s2n_connection *conn, struct s2n_stuffer *out)
 {
-    POSIX_ENSURE_REF(out);
     POSIX_ENSURE_REF(conn);
+    POSIX_ENSURE_REF(out);
 
-    POSIX_ENSURE(s2n_pq_is_enabled(), S2N_ERR_UNIMPLEMENTED);
-
-    struct s2n_kem_group_params *server_kem_group_params = &conn->kex_params.server_kem_group_params;
+    struct s2n_kem_group_params *server_params = &conn->kex_params.server_kem_group_params;
     struct s2n_kem_params *client_kem_params = &conn->kex_params.client_kem_group_params.kem_params;
+
+    POSIX_ENSURE_REF(server_params->kem_group);
     POSIX_ENSURE_REF(client_kem_params->public_key.data);
 
-    POSIX_ENSURE_REF(server_kem_group_params->kem_group);
-    POSIX_GUARD(s2n_stuffer_write_uint16(out, server_kem_group_params->kem_group->iana_id));
+    /* Applies to both pure and hybrid */
+    POSIX_ENSURE(s2n_pq_is_enabled(), S2N_ERR_UNIMPLEMENTED);
+
+    POSIX_GUARD(s2n_stuffer_write_uint16(out, server_params->kem_group->iana_id));
 
     struct s2n_stuffer_reservation total_share_size = { 0 };
     POSIX_GUARD(s2n_stuffer_reserve_uint16(out, &total_share_size));
 
-    /* s2n_kem_send_ciphertext() will generate the PQ shared secret and use
-     * the client's public key to encapsulate; the PQ shared secret will be
-     * stored in client_kem_params, and will be used during the hybrid shared
-     * secret derivation. */
-    if (server_kem_group_params->kem_group->send_kem_first) {
+    if (server_params->kem_group == &s2n_pure_mlkem_1024) {
+        /* Pure ML-KEM: only PQ ciphertext */
         POSIX_GUARD(s2n_kem_send_ciphertext(out, client_kem_params));
-        POSIX_GUARD(s2n_server_key_share_send_hybrid_partial_ecc(conn, out));
     } else {
-        POSIX_GUARD(s2n_server_key_share_send_hybrid_partial_ecc(conn, out));
-        POSIX_GUARD(s2n_kem_send_ciphertext(out, client_kem_params));
+        /* Hybrid: PQ ciphertext + ECC, order depends on send_kem_first */
+        if (server_params->kem_group->send_kem_first) {
+            POSIX_GUARD(s2n_kem_send_ciphertext(out, client_kem_params));
+            POSIX_GUARD(s2n_server_key_share_send_hybrid_partial_ecc(conn, out));
+        } else {
+            POSIX_GUARD(s2n_server_key_share_send_hybrid_partial_ecc(conn, out));
+            POSIX_GUARD(s2n_kem_send_ciphertext(out, client_kem_params));
+        }
     }
 
     POSIX_GUARD(s2n_stuffer_write_vector_size(&total_share_size));
     return S2N_SUCCESS;
 }
 
-/* Check that client has sent a corresponding key share for the server's KEM group */
-int s2n_server_key_share_send_check_pq_hybrid(struct s2n_connection *conn)
+int s2n_server_key_share_send_pq_check(struct s2n_connection *conn)
 {
     POSIX_ENSURE_REF(conn);
-
     POSIX_ENSURE(s2n_pq_is_enabled(), S2N_ERR_UNIMPLEMENTED);
 
-    POSIX_ENSURE_REF(conn->kex_params.server_kem_group_params.kem_group);
-    POSIX_ENSURE_REF(conn->kex_params.server_kem_group_params.kem_params.kem);
-    POSIX_ENSURE_REF(conn->kex_params.server_kem_group_params.ecc_params.negotiated_curve);
-
     const struct s2n_kem_group *server_kem_group = conn->kex_params.server_kem_group_params.kem_group;
+    POSIX_ENSURE_REF(server_kem_group);
 
     const struct s2n_kem_preferences *kem_pref = NULL;
     POSIX_GUARD(s2n_connection_get_kem_preferences(conn, &kem_pref));
@@ -109,12 +108,29 @@ int s2n_server_key_share_send_check_pq_hybrid(struct s2n_connection *conn)
     struct s2n_kem_group_params *client_params = &conn->kex_params.client_kem_group_params;
     POSIX_ENSURE(client_params->kem_group == server_kem_group, S2N_ERR_BAD_KEY_SHARE);
 
-    POSIX_ENSURE(client_params->ecc_params.negotiated_curve == server_kem_group->curve, S2N_ERR_BAD_KEY_SHARE);
-    POSIX_ENSURE(client_params->ecc_params.evp_pkey != NULL, S2N_ERR_BAD_KEY_SHARE);
+    if (server_kem_group == &s2n_pure_mlkem_1024) {
+        /* Pure ML-KEM checks */
+        POSIX_ENSURE(conn->kex_params.server_kem_group_params.ecc_params.negotiated_curve
+                        == &s2n_ecc_curve_placeholder_for_pure_pq,
+                S2N_ERR_BAD_KEY_SHARE);
 
-    POSIX_ENSURE(client_params->kem_params.kem == server_kem_group->kem, S2N_ERR_BAD_KEY_SHARE);
-    POSIX_ENSURE(client_params->kem_params.public_key.size == server_kem_group->kem->public_key_length, S2N_ERR_BAD_KEY_SHARE);
-    POSIX_ENSURE(client_params->kem_params.public_key.data != NULL, S2N_ERR_BAD_KEY_SHARE);
+        POSIX_ENSURE(client_params->kem_params.kem == &s2n_mlkem_1024, S2N_ERR_BAD_KEY_SHARE);
+        POSIX_ENSURE(client_params->kem_params.public_key.size == s2n_mlkem_1024.public_key_length,
+                S2N_ERR_BAD_KEY_SHARE);
+        POSIX_ENSURE(client_params->kem_params.public_key.data != NULL, S2N_ERR_BAD_KEY_SHARE);
+
+    } else {
+        /* Hybrid ECDHE+KEM checks */
+        POSIX_ENSURE_REF(conn->kex_params.server_kem_group_params.kem_params.kem);
+        POSIX_ENSURE_REF(conn->kex_params.server_kem_group_params.ecc_params.negotiated_curve);
+        POSIX_ENSURE(client_params->ecc_params.negotiated_curve == server_kem_group->curve, S2N_ERR_BAD_KEY_SHARE);
+        POSIX_ENSURE(client_params->ecc_params.evp_pkey != NULL, S2N_ERR_BAD_KEY_SHARE);
+
+        POSIX_ENSURE(client_params->kem_params.kem == server_kem_group->kem, S2N_ERR_BAD_KEY_SHARE);
+        POSIX_ENSURE(client_params->kem_params.public_key.size == server_kem_group->kem->public_key_length,
+                S2N_ERR_BAD_KEY_SHARE);
+        POSIX_ENSURE(client_params->kem_params.public_key.data != NULL, S2N_ERR_BAD_KEY_SHARE);
+    }
 
     return S2N_SUCCESS;
 }
@@ -163,12 +179,20 @@ static int s2n_server_key_share_send(struct s2n_connection *conn, struct s2n_stu
         return S2N_SUCCESS;
     }
 
+    // if (curve != NULL) {
+    //     POSIX_GUARD(s2n_server_key_share_send_check_ecdhe(conn));
+    //     POSIX_GUARD(s2n_ecdhe_parameters_send(&conn->kex_params.server_ecc_evp_params, out));
+    // } else {
+    //     POSIX_GUARD(s2n_server_key_share_send_check_pq_hybrid(conn));
+    //     POSIX_GUARD(s2n_server_key_share_generate_pq_hybrid(conn, out));
+    // }
+
     if (curve != NULL) {
         POSIX_GUARD(s2n_server_key_share_send_check_ecdhe(conn));
         POSIX_GUARD(s2n_ecdhe_parameters_send(&conn->kex_params.server_ecc_evp_params, out));
     } else {
-        POSIX_GUARD(s2n_server_key_share_send_check_pq_hybrid(conn));
-        POSIX_GUARD(s2n_server_key_share_generate_pq_hybrid(conn, out));
+        POSIX_GUARD(s2n_server_key_share_send_pq_check(conn));
+        POSIX_GUARD(s2n_server_key_share_generate_pq(conn, out));
     }
 
     return S2N_SUCCESS;
